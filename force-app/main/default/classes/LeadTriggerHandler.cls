@@ -32,17 +32,15 @@ public with sharing class LeadTriggerHandler {
 	 */
 	public static void handleTitleNormalization(List<Lead> leadsToNormalize) {
 		for (Lead ld : leadsToNormalize) {
-			if (ld.title == 'vp' || ld.title.contains('v.p.') || ld.title.contains('vice president')) {
+			if(ld.title == null) {
+				continue;
+			}else if (ld.title.containsIgnoreCase('vp') || ld.title.containsIgnoreCase('v.p.') || ld.title.containsIgnoreCase('vice president')) {
 				ld.Title = 'Vice President';
-			} else if (
-				ld.title.contains('mgr') ||
-				ld.title.contains('manage') ||
-				ld.title.contains('head of department')
-			) {
+			} else if (ld.title.containsIgnoreCase('mgr') || ld.title.containsIgnoreCase('manage') || ld.title.containsIgnoreCase('head of department')) {
 				ld.Title = 'Manager';
-			} else if (ld.title.contains('exec') || ld.title == 'chief' || ld.title.contains('head')) {
+			} else if (ld.title.containsIgnoreCase('exec') || ld.title.containsIgnoreCase('chief') || ld.title.containsIgnoreCase('head')) {
 				ld.Title = 'Executive';
-			} else if (ld.title.contains('assist') || ld.title.contains('deputy') || ld.title == 'jr') {
+			} else if (ld.title.containsIgnoreCase('assist') || ld.title.containsIgnoreCase('deputy') || ld.title.containsIgnoreCase('jr')) {
 				ld.Title = 'Assistant';
 			}
 		}
@@ -60,23 +58,45 @@ public with sharing class LeadTriggerHandler {
 	 * - If the lead belongs to the 'Technology' industry, increment score by another 10 points.
 	 */
 	public static void handleAutoLeadScoring(List<Lead> leadsToScore) {
+		
+		Integer maxScore = 18;
+		Decimal score = 0; 
+
+			
 		for (Lead ld : leadsToScore) {
-			Integer score = 10;
+			if( ld.Lead_Score__c == null) {
+				score = 0;
+				//System.debug('score:: ' + score);
+			} 
 
 			// Check and add points based on the specified conditions
-			if (ld.LeadSource == 'Website' && ld.Email != null) {
-				score = 3;
+			if (ld.LeadSource == 'Web' && (ld.Email == null || ld.Email == '')) {
+				score +=0;
+			} else if (ld.LeadSource == 'Web' && ld.Email != null) {
+				score += 3;
+				//System.debug('leadsource::: ' + score);
 			}
 
-			if (ld.Phone != null) {
-				score = 5;
+			if (ld.Phone == null || ld.Phone == '') {
+				score += 0;
+			} else if (ld.Phone != null) {
+				score += 5;
+				//System.debug('phone::: ' + score);
 			}
 
 			if (ld.Industry == 'Technology') {
-				score = 10;
+				score += 10;
+				//System.debug('industry::: ' + score);
 			}
 
-			ld.Lead_Score__c = score; // Set the computed score back to the lead
+			if(score > maxScore) {
+				ld.Lead_Score__c = 18;
+				//System.debug('leadscore::: ' + score);
+			} else {
+				ld.Lead_Score__c = score;
+				//System.debug('else leadscore::: ' + score); // Set the computed score back to the lead
+			}
+				
 		}
 	}
 
@@ -107,10 +127,13 @@ public with sharing class LeadTriggerHandler {
 		// Step 1: Gather all lead emails
         Map<Id,String> leadToEmailMap = new Map<Id,String>();
 		for (Lead lead : leads) {
-			leadToEmailMap.put(lead.Id, lead.Email);
+			if(!lead.status.contains('Converted')) {
+				leadToEmailMap.put(lead.Id, lead.Email);
+			}
 		}
 
 		// Step 2: Find matching contacts based on email
+		// If multiple Contacts with the same email are found or no match is identified, leave the Lead unconverted.
 		Map<String, Contact> emailToContactMap = new Map<String, Contact>();
 		for (Contact c : [SELECT Id, Email, AccountId FROM Contact WHERE Email IN :leadToEmailMap.values()]) {
 			if (!emailToContactMap.containsKey(c.Email)) {
@@ -118,7 +141,9 @@ public with sharing class LeadTriggerHandler {
 			} else {
 				// If we found another contact with the same email, we don't auto-convert.
 				// So we remove the email from the map.
-				emailToContactMap.remove(c.Email);
+				if(emailToContactMap.containsKey(c.Email)) {
+					emailToContactMap.remove(c.Email);
+				}
 			}
 		}
 
